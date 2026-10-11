@@ -213,7 +213,7 @@ const W=2000,H=1100,GW=260;let mins=3;
 let mode=1,dif=1,pick=[0,1],step=0,S=null,keys={};
 let DPR=1;
 function rs(){DPR=Math.min(window.devicePixelRatio||1,2.5);cv.width=Math.round(innerWidth*DPR);cv.height=Math.round(innerHeight*DPR)}rs();addEventListener('resize',rs);
-addEventListener('keyup',e=>keys[e.code]=0);
+addEventListener('keyup',e=>{keys[e.code]=0;if(S&&S.net=='g'&&ONL)sendInput()});
 
 // ===== Controles configurables, pantalla de entrada y pausa =====
 const DEF=[{u:'KeyW',d:'KeyS',l:'KeyA',r:'KeyD',k:'Space',p:'KeyE',s:'KeyQ'},{u:'ArrowUp',d:'ArrowDown',l:'ArrowLeft',r:'ArrowRight',k:'Comma',p:'Minus',s:'Period'}];
@@ -261,7 +261,7 @@ function quitGame(){clearInterval(fadeT);if(aG){aG.pause();aG.currentTime=0;aG.v
 addEventListener('keydown',e=>{
  if(e.target&&/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
  if(rebind){e.preventDefault();tryBind(e.code);return}
- keys[e.code]=1;
+ keys[e.code]=1;if(S&&S.net=='g'&&ONL)sendInput();
  if(e.code=='Enter'&&S&&(S.lu||S.celeb))tapT=performance.now();
  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.code))e.preventDefault();
  if(scr=='intro'&&e.code=='Enter'){if(!e.repeat)introGo();return}
@@ -377,7 +377,7 @@ const gathered=pc=>new Promise(r=>{if(pc.iceGatheringState=='complete')return r(
  const f=()=>{if(pc.iceGatheringState=='complete'){pc.removeEventListener('icegatheringstatechange',f);r()}};
  pc.addEventListener('icegatheringstatechange',f);setTimeout(r,3500)});
 function sendC(o){if(ONL&&ONL.cc&&ONL.cc.readyState=='open')ONL.cc.send(JSON.stringify(o))}
-function netClose(){if(!ONL)return;const o=ONL;o.dead=true;ONL=null;RK={};clearTimeout(o.tmo);
+function netClose(){if(!ONL)return;const o=ONL;o.dead=true;ONL=null;RK={};clearTimeout(o.tmo);clearTimeout(o.gfb);
  setTimeout(()=>{try{o.cc&&o.cc.close();o.cg&&o.cg.close();o.pc&&o.pc.close();o.peer&&o.peer.destroy()}catch(e){}},300)}
 function netBye(){sendC({t:'bye'});netClose()}
 function toMenu(){if(mode==3)netBye();S=null;menu()}
@@ -386,7 +386,7 @@ function backOnline(){netClose();users()}
 function showNetEnd(m){
  if(S)S.paused=true;scr='netend';ui.style.display='flex';ui.className='tiles pause';ui.style.background='';
  ui.innerHTML=`<div class="tg"><div class="ttl">Online</div><div class="cm" style="font-size:15px;margin:0 0 12px">${esc(m)}</div><div class="g20"><button class="tile on" style="grid-column:span 20" onclick="leaveOnline()">Menú principal</button></div></div>`}
-setInterval(()=>{if(ONL&&!ONL.dead&&ONL.open){sendC({t:'ping'});if(performance.now()-ONL.last>7000)netLost()}},2000);
+setInterval(()=>{if(ONL&&!ONL.dead&&ONL.open){sendC({t:'ping',ts:performance.now()});if(performance.now()-ONL.last>7000)netLost()}},1000);
 addEventListener('pagehide',()=>{if(ONL&&ONL.open)sendC({t:'bye'})});
 function netLost(){if(!ONL||ONL.dead||!ONL.open)return;ONL.dead=true;showNetEnd('Se perdió la conexión con el otro jugador.')}
 function chan(ch){
@@ -401,7 +401,10 @@ function wire(){
  pc.ondatachannel=e=>chan(e.channel)}
 function onMsg(lb,d){
  if(!ONL||ONL.dead)return;ONL.last=performance.now();
- if(lb=='g'){if(ONL.role=='h'){RK={};for(let i=0;i<8;i++)RK[IK[i]]=d[i]=='1'}else ONL.snap=JSON.parse(d);return}
+ if(lb=='g'){if(ONL.role=='h'){RK={};for(let i=0;i<8;i++)RK[IK[i]]=d[i]=='1'}else{const sn=JSON.parse(d),now=performance.now();
+   if(ONL.lr!=null){const dv=Math.abs((now-ONL.lr)-16.7);ONL.jit=ONL.jit==null?dv:ONL.jit*.95+dv*.05}ONL.lr=now;
+   if(sn.ts!=null){const off=now-sn.ts;ONL.off=ONL.off==null?off:(off<ONL.off?off:ONL.off+(off-ONL.off)*.002);(ONL.sb=ONL.sb||[]).push({r:sn.ts,s:sn});if(ONL.sb.length>40)ONL.sb.shift()}
+   ONL.snap=sn}return}
  let m;try{m=JSON.parse(d)}catch(e){return}
  switch(m.t){
   case 'hi':if(ONL.hi)break;ONL.hi=1;ONL.peer=m.n;USR=ONL.role=='h'?[ONL.me,m.n]:[m.n,ONL.me];mode=3;step=0;ONL.myPick=null;ONL.peerPick=null;if(scr=='online')teams();break;
@@ -410,7 +413,8 @@ function onMsg(lb,d){
   case 'tie':if(ONL.role=='h'&&S&&S.choose){if(m.c=='g')tieGold();else tiePen()}break;
   case 'pause':if(ONL.role=='h')pauseToggle();break;
   case 'end':if(ONL.role=='g'&&S){S.sc=m.sc;S.st=m.st;S.gold=!!m.g;S.reg=m.r;S.pen=m.pn?{sc:m.pn}:null;S.mvp=m.mv||null;S.over=true;S.rec=false;end()}break;
-  case 'ping':break;
+  case 'ping':if(m.ts!=null)sendC({t:'pong',ts:m.ts});break;
+  case 'pong':{const r=performance.now()-m.ts;ONL.rtt=ONL.rtt==null?r:ONL.rtt*.8+r*.2}break;
   case 'rm':ONL.peerRm=true;rmUpdate();if(ONL.role=='h'&&ONL.myRm)rmStart();break;
   case 'bye':ONL.dead=true;showNetEnd('El otro jugador salió de la partida.');break}}
 function tryStart(){if(!ONL||ONL.role!='h'||ONL.myPick==null||ONL.peerPick==null)return;
@@ -420,25 +424,49 @@ function rmUpdate(){const b=document.getElementById('rmb'),n=document.getElement
  if(ONL.myRm){b.disabled=true;b.textContent='Esperando al otro jugador';n.textContent=ONL.peerRm?'Los dos aceptaron. Empezando...':'Ya pediste la revancha. Falta que el otro jugador pulse Revancha.'}
  else{b.disabled=false;b.textContent='Revancha';n.textContent=ONL.peerRm?'El otro jugador quiere la revancha. Pulsa Revancha para aceptar.':''}}
 function netRematch(){if(!ONL||ONL.myRm)return;ONL.myRm=true;sendC({t:'rm'});rmUpdate();if(ONL.role=='h'&&ONL.peerRm)rmStart()}
-// anfitrion: manda el estado del partido unas 30 veces por segundo
+// anfitrion: manda el estado del partido casi en cada cuadro (~60 por segundo), con marca de tiempo
 function netHostSend(dt){
- if(!ONL)return;ONL.acc=(ONL.acc||0)+dt;if(ONL.acc<1/30)return;ONL.acc=0;
+ if(!ONL)return;ONL.acc=(ONL.acc||0)+dt;if(ONL.acc<.012)return;ONL.acc=0;
  if(!ONL.cg||ONL.cg.readyState!='open'||ONL.cg.bufferedAmount>30000)return;
- const r=Math.round,P=S.pen;
- const o={p:S.pl.map(p=>[r(p.x),r(p.y),+p.dx.toFixed(2),+p.dy.toFixed(2)]),b:[r(S.ball.x),r(S.ball.y)],c:[S.pl.indexOf(S.cur[0]),S.pl.indexOf(S.cur[1])],sc:S.sc,t:+S.t.toFixed(1),g:S.gold?1:0,m:S.msg,ce:S.pl.indexOf(S.celeb),z:S.paused?1:0,ch:S.choose?1:0,lu:S.lu?[S.lu.t,+S.lu.e.toFixed(2)]:0,gm:S.goalInfo?S.goalInfo.min:0,cr:[0,1].map(t=>S.hm[t]&&S.cs[t]<=0?1:0),cp:[0,1].map(t=>S.hm[t]&&S.kp[t]&&S.cs[t]<=0?+Math.min(1,S.chg[t]/D.ct).toFixed(2):0),cb:S.cshot>0?1:0,ex:S.ext?1:0};
+ const r=v=>Math.round(v*10)/10,P=S.pen;
+ const o={ts:performance.now(),p:S.pl.map(p=>[r(p.x),r(p.y),+p.dx.toFixed(2),+p.dy.toFixed(2)]),b:[r(S.ball.x),r(S.ball.y)],c:[S.pl.indexOf(S.cur[0]),S.pl.indexOf(S.cur[1])],sc:S.sc,t:+S.t.toFixed(1),g:S.gold?1:0,m:S.msg,ce:S.pl.indexOf(S.celeb),z:S.paused?1:0,ch:S.choose?1:0,lu:S.lu?[S.lu.t,+S.lu.e.toFixed(2)]:0,gm:S.goalInfo?S.goalInfo.min:0,cr:[0,1].map(t=>S.hm[t]&&S.cs[t]<=0?1:0),cp:[0,1].map(t=>S.hm[t]&&S.kp[t]&&S.cs[t]<=0?+Math.min(1,S.chg[t]/D.ct).toFixed(2):0),cb:S.cshot>0?1:0,ex:S.ext?1:0};
  if(P)o.pn={k:P.k,sc:P.sc,tk:P.tk,log:P.log,ph:P.ph,rc:[P.ch[0]!==null,P.ch[1]!==null],aim:P.aim,kc:P.kc,miss:P.miss,res:P.res,t:+P.t.toFixed(2)};
  ONL.cg.send(JSON.stringify(o))}
 // invitado: manda sus teclas y dibuja lo que manda el anfitrion
 function sendInput(){if(!ONL||!ONL.cg||ONL.cg.readyState!='open')return;const c=CTRL[0];
  ONL.cg.send(['u','d','l','r','k','p','s'].map(a=>keys[c[a]]?1:0).join('')+((keys.Enter||tapped())?1:0))}
-function netGuestFrame(){
- sendInput();
+function netGuestFrame(dt){
+ dt=dt||1/60;sendInput();
  const s=ONL&&ONL.snap;if(!s||!S||S.over)return;
- s.p.forEach((a,i)=>{const p=S.pl[i];if(!p)return;
-  if(!ONL.init||Math.abs(a[0]-p.x)>350||Math.abs(a[1]-p.y)>350){p.x=a[0];p.y=a[1]}else{p.x+=(a[0]-p.x)*.45;p.y+=(a[1]-p.y)*.45}
-  p.dx=a[2];p.dy=a[3]});
- const B=S.ball;
- if(!ONL.init||Math.abs(s.b[0]-B.x)>400||Math.abs(s.b[1]-B.y)>400){B.x=s.b[0];B.y=s.b[1]}else{B.x+=(s.b[0]-B.x)*.6;B.y+=(s.b[1]-B.y)*.6}
+ // interpolacion: se dibuja un poco en el pasado entre dos estados recibidos, asi el movimiento sale continuo aunque lleguen con retraso desigual
+ const sb=ONL.sb||[];let A=null,B2=null,k=0,ia=0,rtv=0;
+ const idt=Math.max(28,Math.min(100,26+3*(ONL.jit||0)));ONL.idl=ONL.idl==null?60:ONL.idl+(idt-ONL.idl)*.02;
+ if(sb.length&&ONL.off!=null){const rt=performance.now()-ONL.off-ONL.idl;rtv=rt;
+  for(let i=sb.length-1;i>=0;i--){if(sb[i].r<=rt){A=sb[i];B2=sb[i+1]||null;ia=i;break}}
+  if(!A){A=sb[0];ia=0}
+  k=B2&&B2.r>A.r?Math.max(0,Math.min(1,(rt-A.r)/(B2.r-A.r))):0}
+ const sa=A?A.s:s,sn=B2?B2.s:null,lp=(u,v)=>Math.abs(v-u)>350?v:u+(v-u)*k;
+ // extrapolacion suave: se adelanta lo que se ve (retraso de dibujo + mitad del viaje) con la velocidad reciente, para que no se sienta atrasado
+ const jn=B2?ia+1:ia,P1=sb[jn]||A,P0=sb[Math.max(0,jn-5)]||A,sp=(P1&&P0&&P1.r>P0.r)?(P1.r-P0.r)/1000:0;
+ const lead=Math.min(.075,((ONL.idl||0)+(ONL.rtt||0)/2)/1000*.65)+(B2||!A?0:Math.min(.1,Math.max(0,(rtv-A.r)/1000)));
+ const vm=ONL.vm||(ONL.vm={});
+ const vv=(key,a,b,lim)=>{const v=(sp>0&&Math.abs(b-a)<=lim)?(b-a)/sp:0;vm[key]=(vm[key]||0)+(v-(vm[key]||0))*.2;return vm[key]};
+ S.pl.forEach((p,i)=>{const a=sa.p[i];if(!p||!a)return;const b=sn?sn.p[i]:a,q1=P1&&P1.s.p[i],q0=P0&&P0.s.p[i];
+  p.x=Math.max(10,Math.min(W-10,lp(a[0],b[0])+(q1&&q0?vv('x'+i,q0[0],q1[0],70)*lead:0)));
+  p.y=Math.max(10,Math.min(H-10,lp(a[1],b[1])+(q1&&q0?vv('y'+i,q0[1],q1[1],70)*lead:0)));p.dx=b[2];p.dy=b[3]});
+ {const a=sa.b,b=sn?sn.b:a,Bl=S.ball,q1=P1&&P1.s.b,q0=P0&&P0.s.b;
+  Bl.x=Math.max(-30,Math.min(W+30,(Math.abs(b[0]-a[0])>400?b[0]:a[0]+(b[0]-a[0])*k)+(q1&&q0?vv('bx',q0[0],q1[0],220)*lead:0)));
+  Bl.y=Math.max(8,Math.min(H-8,(Math.abs(b[1]-a[1])>400?b[1]:a[1]+(b[1]-a[1])*k)+(q1&&q0?vv('by',q0[1],q1[1],220)*lead:0)))}
+ // prediccion de tu propio jugador: se mueve al instante con tus teclas y se corrige suave con lo que dice el anfitrion
+ const ci=s.c[1],mp=S.pl[ci];
+ if(mp&&s.ce<0&&!s.lu&&!s.z&&!s.pn&&!s.ch){
+  if(ONL.pi!==ci){ONL.pi=ci;ONL.px=s.p[ci][0];ONL.py=s.p[ci][1]}
+  const c0=CTRL[0],mx=(keys[c0.r]?1:0)-(keys[c0.l]?1:0),my=(keys[c0.d]?1:0)-(keys[c0.u]?1:0),l=Math.hypot(mx,my);
+  if(l){ONL.px=Math.max(10,Math.min(W-10,ONL.px+mx/l*230*dt));ONL.py=Math.max(10,Math.min(H-10,ONL.py+my/l*230*dt));mp.dx=mx/l;mp.dy=my/l}
+  const au=s.p[ci],ex=au[0]-ONL.px,ey=au[1]-ONL.py;
+  if(Math.hypot(ex,ey)>70){ONL.px=au[0];ONL.py=au[1]}else{ONL.px+=ex*.06;ONL.py+=ey*.06}
+  mp.x=ONL.px;mp.y=ONL.py}
+ else ONL.pi=-1;
  ONL.init=1;
  if(s.lu){if(!S.lu||S.lu.t!=s.lu[0])luShow(s.lu[0]);S.lu={t:s.lu[0],e:s.lu[1]};luBar(S.lu.e)}else if(S.lu){S.lu=null;luHide()}
  S.csr=s.cr;S.csp=s.cp;S.cball=s.cb;S.ext=!!s.ex;
@@ -489,7 +517,14 @@ function peerChan(conn){ // adapta una conexion de PeerJS al mismo formato de ca
  conn.on('data',d=>{if(ch.onmessage)ch.onmessage({data:d})});
  conn.on('close',()=>{if(ch.onclose)ch.onclose()});
  conn.on('error',()=>{});
- chan(ch);if(conn.open)fire()}
+ chan(ch);if(conn.open)fire();
+ if(conn.label=='c'){conn.on('open',()=>addGx(conn));if(conn.open)addGx(conn)}}
+function addGx(conn){ // canal del juego sin reintentos: si se pierde un paquete, no retrasa a los siguientes
+ if(!ONL||ONL.gx||!conn.peerConnection)return;
+ try{const dc=conn.peerConnection.createDataChannel('gx',{negotiated:true,id:7,ordered:false,maxRetransmits:0});ONL.gx=dc;
+  const ch={label:'g',onopen:null,onmessage:null,onclose:null,get readyState(){return dc.readyState},get bufferedAmount(){return dc.bufferedAmount},send(d){dc.send(d)},close(){try{dc.close()}catch(e){}}};
+  dc.onopen=()=>{if(ch._o)return;ch._o=1;if(ch.onopen)ch.onopen()};dc.onmessage=e=>{if(ch.onmessage)ch.onmessage(e)};dc.onclose=()=>{if(ch.onclose)ch.onclose()};
+  chan(ch);if(dc.readyState=='open')dc.onopen()}catch(e){ONL.gx=null}}
 function peerErr(e){const t=e&&e.type;
  if(t=='peer-unavailable')return 'No hay ninguna partida con ese código. Revisa que esté bien escrito y que tu amigo siga esperando en su pantalla.';
  if(t=='unavailable-id')return 'Ese código ya estaba en uso. Inténtalo de nuevo.';
@@ -511,7 +546,8 @@ function guestJoin(){
  ONL.code=raw;ONL.joining=true;ONL.msg='Conectando...';onlineScreen();
  const peer=new Peer(peerOpts());ONL.peer=peer;
  peer.on('open',()=>{if(!ONL||ONL.peer!==peer)return;const id='fsfut-'+raw;
-  peerChan(peer.connect(id,{label:'c',reliable:true,serialization:'raw'}));peerChan(peer.connect(id,{label:'g',reliable:false,serialization:'raw'}));
+  peerChan(peer.connect(id,{label:'c',reliable:true,serialization:'raw'}));
+  ONL.gfb=setTimeout(()=>{if(ONL&&ONL.peer===peer&&!(ONL.cg&&ONL.cg.readyState=='open')&&!ONL.dead)peerChan(peer.connect(id,{label:'g',reliable:false,serialization:'raw'}))},6000);
   ONL.tmo=setTimeout(()=>{if(ONL&&ONL.peer===peer&&!ONL.open){ONL.joining=false;ONL.msg='No se pudo conectar con esa partida. Revisa el código e inténtalo de nuevo.';onlineScreen()}},20000)});
  peer.on('error',e=>{if(!ONL||ONL.peer!==peer)return;clearTimeout(ONL.tmo);ONL.joining=false;ONL.msg=peerErr(e);onlineScreen()})}
 function onlineScreen(){
@@ -563,7 +599,7 @@ function start(){
  for(let t=0;t<2;t++)for(let i=0;i<5;i++){
   const hx=(t?1-fx[i]:fx[i])*W,hy=fy[i]*H;
   S.pl.push({t,i,hx,hy,x:hx,y:hy,vx:0,vy:0,dx:t?-1:1,dy:0,cd:0,think:0,nm:NAMES[T[pick[t]].n][i]});}
- S.cur[0]=S.pl[3];if(mode!=1)S.cur[1]=S.pl[8];if(mode==3){S.net=ONL.role;ONL.init=0;ONL.snap=null;ONL.myRm=false;ONL.peerRm=false}
+ S.cur[0]=S.pl[3];if(mode!=1)S.cur[1]=S.pl[8];if(mode==3){S.net=ONL.role;ONL.init=0;ONL.snap=null;ONL.sb=[];ONL.myRm=false;ONL.peerRm=false}
  kick_off();S.lu={t:0,e:0,pe:true,st:performance.now()};luShow(0);last=performance.now();if(!running){running=true;requestAnimationFrame(loop)}}
 function kick_off(){const b=S.ball;b.x=W/2;b.y=H/2;b.vx=b.vy=0;S.poss=-1;S.pl.forEach(p=>{p.x=p.hx;p.y=p.hy;p.vx=p.vy=0});for(let t=0;t<2;t++){const c=S.cur[t];if(c){c.x=W/2+(t?40:-40);c.y=H/2}}}
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -816,10 +852,9 @@ let last=0,running=false;
 function loop(now){
  if(!S){running=false;return}const dt=Math.min(.033,(now-last)/1000);last=now;
  if(S.mvpC){S.mvpT+=dt;if(S.mvpT>=6){S.mvpC=false;endUI()}}
- if(S.net=='h')netHostSend(dt);
- if(S.net=='g'){netGuestFrame();draw();requestAnimationFrame(loop);return}
- if(S.lu){luStep(dt);draw();requestAnimationFrame(loop);return}
- if(S.paused){draw();requestAnimationFrame(loop);return}
+ if(S.net=='g'){netGuestFrame(dt);draw();requestAnimationFrame(loop);return}
+ if(S.lu){luStep(dt);if(S.net=='h')netHostSend(dt);draw();requestAnimationFrame(loop);return}
+ if(S.paused){if(S.net=='h')netHostSend(dt);draw();requestAnimationFrame(loop);return}
  if(S.pen&&!S.over)penStep(dt);else if(!S.over&&!S.choose){
   if(S.pause>0){S.pause-=dt;
    if(S.celeb){celebStep(dt);const e=!!keys.Enter||(mode==3&&!!RK.e)||tapped();if(e&&!S.ent&&S.pmax-S.pause>.4)S.pause=0;S.ent=e;if(S.pmax-S.pause>2.5)S.msg=''}
@@ -831,7 +866,7 @@ function loop(now){
    if(!S.ext){S.t-=dt;if(S.t<=0){S.t=0;if(Math.hypot(S.ball.vx,S.ball.vy)>35){S.ext=true;S.tc0=S.tc||0;S.extT=0}else timeUp()}}
    else if(S.pause<=0){S.extT+=dt;if((S.tc||0)>S.tc0||Math.hypot(S.ball.vx,S.ball.vy)<=35||S.extT>8){S.ext=false;timeUp()}}}}
  }
- draw();requestAnimationFrame(loop)}
+ if(S.net=='h')netHostSend(dt);draw();requestAnimationFrame(loop)}
 // ===== Celebracion: vista 3D, barra de gol inferior (estilo PES) =====
 const ABR={'Argentina':'ARG','Brasil':'BRA','Uruguay':'URU','Colombia':'COL','Chile':'CHI','Ecuador':'ECU','Paraguay':'PAR','Perú':'PER','Venezuela':'VEN','Bolivia':'BOL','Malmö FF':'MAL','Barcelona':'BAR','Real Madrid':'RMA'};
 const cmb=[{prev:{},seq:[],t:0,init:false},{prev:{},seq:[],t:0,init:false}];
