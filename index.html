@@ -458,6 +458,7 @@ function onMsg(lb,d,from){
   case 'end':if(ONL.role=='g'&&S){S.sc=m.sc;S.st=m.st;S.gold=!!m.g;S.reg=m.r;S.pen=m.pn?{sc:m.pn}:null;S.mvp=m.mv||null;S.over=true;S.rec=false;end()}break;
   case 'ping':if(m.ts!=null)sendC({t:'pong',ts:m.ts});break;
   case 'pong':{const r=performance.now()-m.ts;ONL.rtt=ONL.rtt==null?r:ONL.rtt*.8+r*.2}break;
+  case 'c3':if(ONL.role=='h'&&S&&S.celeb&&!S.paused)S.c3d=!S.c3d;break;
   case 'rm':if(ONL.m4){if(ONL.role=='h'&&from!=null){ONL.rmH[from]=true;rmBroadcast()}break}
    ONL.peerRm=true;rmUpdate();if(ONL.role=='h'&&ONL.myRm)rmStart();break;
   case 'bye':
@@ -484,7 +485,7 @@ function netHostSend(dt){
  const tg=ONL.m4?ONL.pr.filter(P=>P&&P.open&&P.cg&&P.cg.readyState=='open'&&P.cg.bufferedAmount<=30000).map(P=>P.cg):((ONL.cg&&ONL.cg.readyState=='open'&&ONL.cg.bufferedAmount<=30000)?[ONL.cg]:[]);
  if(!tg.length)return;
  const r=v=>Math.round(v*10)/10,P=S.pen;
- const o={ts:performance.now(),p:S.pl.map(p=>[r(p.x),r(p.y),+p.dx.toFixed(2),+p.dy.toFixed(2)]),b:[r(S.ball.x),r(S.ball.y)],c:S.cur.map(x=>S.pl.indexOf(x)),sc:S.sc,t:+S.t.toFixed(1),g:S.gold?1:0,m:S.msg,ce:S.pl.indexOf(S.celeb),z:S.paused?1:0,ch:S.choose?1:0,lu:S.lu?[S.lu.t,+S.lu.e.toFixed(2)]:0,gm:S.goalInfo?S.goalInfo.min:0,cr:[0,1,2,3].map(t=>S.hm[t]&&S.cs[t]<=0?1:0),cp:[0,1,2,3].map(t=>S.hm[t]&&S.kp[t]&&S.cs[t]<=0?+Math.min(1,S.chg[t]/D.ct).toFixed(2):0),cb:S.cshot>0?1:0,ex:S.ext?1:0};
+ const o={ts:performance.now(),c3:S.c3d?1:0,p:S.pl.map(p=>[r(p.x),r(p.y),+p.dx.toFixed(2),+p.dy.toFixed(2)]),b:[r(S.ball.x),r(S.ball.y)],c:S.cur.map(x=>S.pl.indexOf(x)),sc:S.sc,t:+S.t.toFixed(1),g:S.gold?1:0,m:S.msg,ce:S.pl.indexOf(S.celeb),z:S.paused?1:0,ch:S.choose?1:0,lu:S.lu?[S.lu.t,+S.lu.e.toFixed(2)]:0,gm:S.goalInfo?S.goalInfo.min:0,cr:[0,1,2,3].map(t=>S.hm[t]&&S.cs[t]<=0?1:0),cp:[0,1,2,3].map(t=>S.hm[t]&&S.kp[t]&&S.cs[t]<=0?+Math.min(1,S.chg[t]/D.ct).toFixed(2):0),cb:S.cshot>0?1:0,ex:S.ext?1:0};
  if(P)o.pn={k:P.k,sc:P.sc,tk:P.tk,log:P.log,ph:P.ph,rc:[P.ch[0]!==null,P.ch[1]!==null],aim:P.aim,kc:P.kc,miss:P.miss,res:P.res,t:+P.t.toFixed(2)};
  const js=JSON.stringify(o);tg.forEach(c=>c.send(js))}
 // invitado: manda sus teclas y dibuja lo que manda el anfitrion
@@ -525,7 +526,7 @@ function netGuestFrame(dt){
  ONL.init=1;
  if(s.lu){if(!S.lu||S.lu.t!=s.lu[0])luShow(s.lu[0]);S.lu={t:s.lu[0],e:s.lu[1]};luBar(S.lu.e)}else if(S.lu){S.lu=null;luHide()}
  S.csr=s.cr;S.csp=s.cp;S.cball=s.cb;S.ext=!!s.ex;
- S.sc=s.sc;S.t=s.t;S.gold=!!s.g;S.msg=s.m;S.cur=s.c.map(i=>S.pl[i]||null);
+ S.sc=s.sc;S.t=s.t;S.gold=!!s.g;S.msg=s.m;S.cur=s.c.map(i=>S.pl[i]||null);S.c3d=!!s.c3;
  const nc=s.ce>=0?S.pl[s.ce]:null;if(nc&&!S.celeb){goalSfx();S.cStart=performance.now();S.goalInfo={t:nc.t,name:nc.nm,min:s.gm||0};cmb.forEach(c=>{c.init=false;c.seq=[]})}if(!nc&&S.celeb){fadeGoal();S.goalInfo=null;S.c3d=false}S.celeb=nc;
  if(!!s.z!==!!S.paused){S.paused=!!s.z;showPause(S.paused)}
  if(s.ch&&!S.choose){S.choose=true;tieMenu()}else if(!s.ch&&S.choose){S.choose=false;ui.style.display='none'}
@@ -674,8 +675,10 @@ function onlineScreen(){
   const col=t=>{const rows=[0,1,2,3].filter(i=>nm[i]&&tm[i]==t).map(i=>`<div class="rr${i==me?' me':''}"><b>${esc(nm[i])}</b>${i==me?'<em>tú</em>':''}${host&&!ONL.started?`<button class="mv" onclick="lobbyMove(${i})">Pasar al ${t?'A':'B'}</button>`:''}</div>`);while(rows.length<2)rows.push('<div class="rr empty"><b>Libre (jugador automático)</b></div>');return `<div class="cp"><h3>Equipo ${t?'B':'A'}</h3>${rows.join('')}</div>`};
   return `<div class="cw">${col(0)}${col(1)}</div>`};
  let body;
+ const inClaude=!!(window.claude&&typeof window.claude.use==='function'); // dentro de la pagina de claude.ai no se puede usar ningun servicio externo
  const manualPanel=`<div class="cp" style="margin-top:8px"><h3>Conexión manual</h3><div class="cm">Sin servicio de conexión${m4?' (un código largo por cada jugador)':', con códigos largos'}. Úsala si el código corto no funciona.</div><div class="g20" style="margin-top:6px"><button class="tile sm" style="grid-column:span 10" onclick="hostCreateM()">Crear (manual)</button><button class="tile sm" style="grid-column:span 10" onclick="guestStartM()">Unirme (manual)</button></div></div>`;
- if(!ONL)body=`<div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">${m4?'Serás el anfitrión. Se genera un código de 6 caracteres para los demás jugadores (pueden ser de 1 a 3). Los puestos que queden libres los juega la computadora.':'Serás el anfitrión (Jugador 1). Se genera un código de 6 caracteres para tu amigo.'}</div>${g('Crear partida','hostCreate()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Escribe el código de 6 caracteres que te dio el anfitrión.</div>${g('Unirme con un código','guestStart()',0)}</div></div>`+manualPanel;
+ if(!ONL&&inClaude)body=`<div class="cp"><h3>Estás jugando desde la página de claude.ai</h3><div class="cm">Aquí el código corto no está disponible, porque esta página no puede usar servicios externos. Usa la conexión manual: funciona igual, con códigos largos${m4?' (uno por cada jugador)':''}. Si prefieres códigos cortos, abre el juego desde GitHub Pages o desde el archivo descargado.</div></div><div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">Serás el anfitrión${m4?': generas un código para cada jugador que se una (de 1 a 3).':'. Generas un código y tu amigo te devuelve otro.'}</div>${g('Crear (manual)','hostCreateM()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Pega el código que te envió el anfitrión y devuélvele el tuyo.</div>${g('Unirme (manual)','guestStartM()',0)}</div></div>`;
+ else if(!ONL)body=`<div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">${m4?'Serás el anfitrión. Se genera un código de 6 caracteres para los demás jugadores (pueden ser de 1 a 3). Los puestos que queden libres los juega la computadora.':'Serás el anfitrión (Jugador 1). Se genera un código de 6 caracteres para tu amigo.'}</div>${g('Crear partida','hostCreate()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Escribe el código de 6 caracteres que te dio el anfitrión.</div>${g('Unirme con un código','guestStart()',0)}</div></div>`+manualPanel;
  else if(m4&&ONL.role=='h'){
   const n=m4n(),ok=canStart();let top;
   if(ONL.mode=='s'){
@@ -1047,7 +1050,7 @@ function comboCheck(){
   if(!C.init){C.init=true;C.prev=cur;C.seq=[];return}
   ['l','u','r'].forEach(a=>{if(cur[a]&&!C.prev[a]){
    if(C.seq.length&&now-C.t>900)C.seq=[];
-   if(a==['l','u','r'][C.seq.length]){C.seq.push(a);C.t=now;if(C.seq.length==3){S.c3d=!S.c3d;C.seq=[]}}
+   if(a==['l','u','r'][C.seq.length]){C.seq.push(a);C.t=now;if(C.seq.length==3){if(S.net=='g')sendC({t:'c3'});else S.c3d=!S.c3d;C.seq=[]}}
    else{C.seq=a=='l'?['l']:[];C.t=now}}});
   C.prev=cur})}
 const shade=(h,f)=>{const n=parseInt(h.slice(1),16);return 'rgb('+Math.round((n>>16)*f)+','+Math.round(((n>>8)&255)*f)+','+Math.round((n&255)*f)+')'};
@@ -1208,7 +1211,15 @@ function draw(){
  if(S.pen&&S.pen.ph){drawPen();return}
  const cw=cv.width/DPR,ch=cv.height/DPR,zz=camZoom(),s=cw/1000*(1+.22*zz.z),vw=cw/s,vh=ch/s,b=S.ball;
  g.fillStyle='#0d1b12';g.fillRect(0,0,cw,ch);
- const fo=S.celeb||(zz.z>0&&zz.p?{x:b.x+(zz.p.x-b.x)*zz.z,y:b.y+(zz.p.y-b.y)*zz.z}:b);let cx=Math.max(-80+vw/2,Math.min(W+80-vw/2,fo.x)),cy=Math.max(-40+vh/2,Math.min(H+40-vh/2,fo.y));
+ let fo=S.celeb||(zz.z>0&&zz.p?{x:b.x+(zz.p.x-b.x)*zz.z,y:b.y+(zz.p.y-b.y)*zz.z}:b);
+ // cada jugador debe ver al futbolista que controla: si se aleja del balon, la camara se corre lo justo para mantenerlo en pantalla
+ {const own=S.net=='g'?S.cur[ONL.myh||1]:(S.net=='h'||mode==1?S.cur[0]:null),now2=performance.now(),dt2=Math.min(.05,(now2-(S.ct||now2))/1000);S.ct=now2;
+  let tx=0,ty=0;
+  if(own&&!S.celeb&&!S.over&&!S.lu&&!(zz.z>0)){const ax=vw/2-vw*.15,ay=vh/2-vh*.17,lx=own.x-fo.x,ly=own.y-fo.y;
+   if(lx>ax)tx=lx-ax;else if(lx<-ax)tx=lx+ax;if(ly>ay)ty=ly-ay;else if(ly<-ay)ty=ly+ay}
+  S.cox=(S.cox||0)+(tx-(S.cox||0))*Math.min(1,dt2*7);S.coy=(S.coy||0)+(ty-(S.coy||0))*Math.min(1,dt2*7);
+  if(Math.abs(S.cox)>.3||Math.abs(S.coy)>.3)fo={x:fo.x+S.cox,y:fo.y+S.coy}}
+ let cx=Math.max(-80+vw/2,Math.min(W+80-vw/2,fo.x)),cy=Math.max(-40+vh/2,Math.min(H+40-vh/2,fo.y));S.camC={x:cx,y:cy,vw,vh};
  if(S.c3d&&S.celeb)draw3D(cw,ch);else{g.save();g.scale(s,s);g.translate(vw/2-cx,vh/2-cy);
  for(let i=0;i<10;i++){g.fillStyle=i%2?'#2e8b3e':'#348f44';g.fillRect(i*W/10,0,W/10,H)}
  g.strokeStyle='#fffc';g.lineWidth=4;g.strokeRect(0,0,W,H);
