@@ -498,7 +498,7 @@ function endUI(){
  <div class="g20">${mode>=3?'<button id="rmb" class="tile sm on" style="grid-column:span 10" onclick="netRematch()">Revancha</button>':'<button class="tile sm on" style="grid-column:span 10" onclick="start()">Revancha</button>'}<button class="tile sm" style="grid-column:span 10" onclick="toMenu()">Menú principal</button></div><div class="cm" id="rmn" style="text-align:center"></div></div>`;if(mode>=3)rmUpdate()}
 // ===== Juego online (WebRTC, conexion por codigos) =====
 let ONL=null,RK={};
-const ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478'],username:'peerjs',credential:'peerjsp'},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]},IK=['u','d','l','r','k','p','s','e'];
+const ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:stun.cloudflare.com:3478']},{urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478'],username:'peerjs',credential:'peerjsp'},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'},{urls:['turn:turn.anyfirewall.com:443?transport=tcp'],username:'webrtc',credential:'webrtc'}]},IK=['u','d','l','r','k','p','s','e'];
 let RKS=[null,{},{},{}];
 const act=(h,a)=>mode==4?(h==0?!!keys[CTRL[0][a]]:!!(RKS[h]&&RKS[h][a])):(mode==3&&h==1)?!!RK[a]:!!keys[CTRL[h][a]];
 async function pack(o){
@@ -513,8 +513,12 @@ async function unpack(t){
  if(t[3]=='z')u8=new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
  return JSON.parse(new TextDecoder().decode(u8))}
 const gathered=pc=>new Promise(r=>{if(pc.iceGatheringState=='complete')return r();
- const f=()=>{if(pc.iceGatheringState=='complete'){pc.removeEventListener('icegatheringstatechange',f);r()}};
- pc.addEventListener('icegatheringstatechange',f);setTimeout(r,5000)});
+ let done=false,good=0;const t0=performance.now();let last=t0;
+ const fin=()=>{if(done)return;done=true;clearInterval(iv);pc.removeEventListener('icegatheringstatechange',f);pc.removeEventListener('icecandidate',c);r()};
+ const f=()=>{if(pc.iceGatheringState=='complete')fin()};
+ const c=e=>{if(e.candidate){last=performance.now();if(/ typ (srflx|relay)/.test(e.candidate.candidate))good++}};
+ pc.addEventListener('icegatheringstatechange',f);pc.addEventListener('icecandidate',c);
+ const iv=setInterval(()=>{const n=performance.now();if(n-t0>4500||(good>=2&&n-t0>1200&&n-last>600)||(good>=1&&n-t0>2000&&n-last>900))fin()},150)});
 function sendC(o,only){if(!ONL)return;const s=JSON.stringify(o);
  if(ONL.m4&&ONL.role=='h'){ONL.pr.forEach((P,i)=>{if(P&&P.cc&&P.cc.readyState=='open'&&(only==null||only==i))P.cc.send(s)})}
  else if(ONL.cc&&ONL.cc.readyState=='open')ONL.cc.send(s)}
@@ -696,6 +700,10 @@ function copyCode(){
 const CODEAL='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const genCode=()=>{let c='';for(let i=0;i<6;i++)c+=CODEAL[Math.floor(Math.random()*CODEAL.length)];return c};
 const peerOpts=()=>Object.assign({config:{iceServers:ICE.iceServers}},window.PEER_OPTS||{});
+function watchIce(pc){if(!ONL||pc._w)return;pc._w=1;const d=ONL.ice||(ONL.ice={host:0,srflx:0,relay:0,st:''});
+ pc.addEventListener('icecandidate',e=>{if(e.candidate){const m=/ typ (\w+)/.exec(e.candidate.candidate);if(m)d[m[1]]=(d[m[1]]||0)+1}});
+ pc.addEventListener('iceconnectionstatechange',()=>{d.st=pc.iceConnectionState})}
+const iceSum=()=>{const d=ONL&&ONL.ice;return d?('estado de la ruta: '+(d.st||'sin iniciar')+' · locales '+d.host+', públicas '+d.srflx+', por servidor intermedio '+d.relay):''};
 function peerChan(conn){ // adapta una conexion de PeerJS al mismo formato de canal que usa el resto del juego
  const ch={label:conn.label,pid:conn.peer,onopen:null,onmessage:null,onclose:null,
   get readyState(){return conn.open?'open':'closed'},
@@ -706,6 +714,7 @@ function peerChan(conn){ // adapta una conexion de PeerJS al mismo formato de ca
  conn.on('data',d=>{if(ch.onmessage)ch.onmessage({data:d})});
  conn.on('close',()=>{if(ch.onclose)ch.onclose()});
  conn.on('error',()=>{});
+ {let tries=0;const w=()=>{if(conn.peerConnection)watchIce(conn.peerConnection);else if(++tries<40)setTimeout(w,200)};w()}
  chan(ch);if(conn.open)fire();
  if(conn.label=='c'){conn.on('open',()=>addGx(conn));if(conn.open)addGx(conn)}}
 function addGx(conn){ // canal del juego sin reintentos: si se pierde un paquete, no retrasa a los siguientes
@@ -761,6 +770,25 @@ async function relayJoin(code){
   ()=>{relayPub(rTopic(code),{t:'join',gid,sdp})},
   es=>{fail(peerErr({type:'network'}))});
  ONL.rtmo=setTimeout(()=>{if(ONL&&!ONL.open&&ONL.rpc===pc)fail('No hay ninguna partida con ese código. Revisa que esté bien escrito y que tu amigo siga esperando en su pantalla.')},12000)}
+let NTR='';
+async function netTest(){
+ const out=t=>{NTR=t;const e=document.getElementById('nt');if(e)e.innerHTML=t};
+ if(!window.RTCPeerConnection){out('Este navegador no permite conexiones directas (WebRTC). El online no funcionará aquí.');return}
+ out('Probando tu red... (hasta 5 segundos)');
+ const cnt={host:0,srflx:0,relay:0},bases={};
+ try{const pc=new RTCPeerConnection(ICE);pc.createDataChannel('t');
+  pc.onicecandidate=e=>{if(!e.candidate)return;const p=e.candidate.candidate.split(' '),m=/ typ (\w+)/.exec(e.candidate.candidate);if(!m)return;const ty=m[1];cnt[ty]=(cnt[ty]||0)+1;
+   if(ty=='srflx'){const ri=e.candidate.candidate.match(/rport (\d+)/);const k=ri?ri[1]:'?';(bases[k]=bases[k]||new Set()).add(p[5])}};
+  await pc.setLocalDescription(await pc.createOffer());
+  await gathered(pc);
+  pc.close()}catch(e){out('No se pudo hacer la prueba: '+e.message);return}
+ const sym=Object.values(bases).some(v=>v.size>1);
+ let v;
+ if(!cnt.srflx&&!cnt.relay)v='<b>No se pudo contactar ningún servidor externo.</b> Tu red o tu navegador está bloqueando la conexión hacia internet para juegos. Con otras redes no va a conectar desde aquí; prueba con otra red (por ejemplo tus datos móviles o el WiFi de otra casa).';
+ else if(cnt.relay)v='<b>Todo bien.</b> Hay servidor intermedio disponible: podrás conectar con otras redes aunque alguna sea estricta.';
+ else if(sym)v='<b>Tu red es estricta.</b> No hay servidor intermedio disponible, así que conectar con otra red puede fallar. Prueba con otra red (WiFi o datos móviles) o conecten desde la misma red.';
+ else v='<b>Tu red permite la conexión directa.</b> Debería funcionar con la mayoría de redes. Si el otro jugador falla, pídele que también pruebe su red.';
+ out(v+'<br><small>Rutas encontradas: locales '+cnt.host+', públicas '+cnt.srflx+', por servidor intermedio '+cnt.relay+(sym?' · tipo de red: estricta':'')+'</small>')}
 function hostCreate(){
  netClose();ONL={role:'h',mode:'s',me:USR[0],code:'',msg:'Conectando con el servicio...',m4:mode==4,names:[USR[0],null,null,null],tm:[0,1,0,1],pr:[null,null,null,null],pm:{}};onlineScreen();hostPeer(0)}
 function hostPeer(tries){
@@ -794,14 +822,14 @@ function guestJoin(){
  const peer=new Peer(peerOpts());ONL.pj=peer;ONL.pjOpen=false;
  peer.on('open',()=>{if(!ONL||ONL.pj!==peer)return;ONL.pjOpen=true;clearTimeout(ONL.tmo);const id='fsfut-'+raw;
   peerChan(peer.connect(id,{label:'c',reliable:true,serialization:'raw'}));
-  ONL.gfb=setTimeout(()=>{if(ONL&&ONL.pj===peer&&!(ONL.cg&&ONL.cg.readyState=='open')&&!ONL.dead)peerChan(peer.connect(id,{label:'g',reliable:false,serialization:'raw'}))},6000);
-  setTimeout(()=>{if(ONL&&ONL.pj===peer&&!ONL.open&&ONL.joining&&scr=='online'){ONL.msg='Conectando... entre redes distintas puede tardar hasta 30 segundos.';onlineScreen()}},12000);
+  ONL.gfb=setTimeout(()=>{if(ONL&&ONL.pj===peer&&!(ONL.cg&&ONL.cg.readyState=='open')&&!ONL.dead)peerChan(peer.connect(id,{label:'g',reliable:false,serialization:'raw'}))},15000);
+  setTimeout(()=>{if(ONL&&ONL.pj===peer&&!ONL.open&&ONL.joining&&scr=='online'){ONL.msg='Conectando... entre redes distintas puede tardar hasta 30 segundos. ('+iceSum()+')';onlineScreen()}},12000);
   ONL.tmo=setTimeout(()=>{if(ONL&&ONL.pj===peer&&!ONL.open)relayJoin(raw)},35000)});
  peer.on('error',e=>{if(!ONL||ONL.pj!==peer)return;clearTimeout(ONL.tmo);relayJoin(raw)});
  ONL.tmo=setTimeout(()=>{if(ONL&&ONL.pj===peer&&!ONL.pjOpen)relayJoin(raw)},8000)}
 function onlineScreen(){
  scr='online';menuMusic(true);ambient(false);ui.style.display='flex';ui.className='tiles';
- gbgBg(.35,.62);
+ gbgBg(.35,.62,true);
  if(ONL&&ONL.m4&&ONL.mp){ONL.mv=ONL.mv||{};for(let h=1;h<4;h++){const e=document.getElementById('ma'+h);if(e)ONL.mv[h]=e.value}}
  const g=(t,fn,on,sp,dis)=>`<div class="g20" style="margin-top:6px"><button class="tile sm ${on?'on':''}" style="grid-column:span ${sp||20}" ${dis?'disabled':''} onclick="${fn}">${t}</button></div>`;
  const m4=mode==4,roster=()=>{const nm=(ONL&&ONL.names)||[],tm=(ONL&&ONL.tm)||[0,1,0,1],me=ONL&&ONL.role=='g'?ONL.myh:0,host=ONL&&ONL.role=='h';
@@ -809,9 +837,10 @@ function onlineScreen(){
   return `<div class="cw">${col(0)}${col(1)}</div>`};
  let body;
  const inClaude=!!(window.claude&&typeof window.claude.use==='function'); // dentro de la pagina de claude.ai no se puede usar ningun servicio externo
+ const testPanel=`<div class="cp" style="margin-top:8px"><h3>Probar mi red</h3><div class="cm" id="nt">${NTR||'Comprueba si tu red permite jugar online con jugadores de otras redes.'}</div>${g('Probar mi red','netTest()',0,10)}</div>`;
  const manualPanel=`<div class="cp" style="margin-top:8px"><h3>Conexión manual</h3><div class="cm">Sin servicio de conexión${m4?' (un código largo por cada jugador)':', con códigos largos'}. Úsala si el código corto no funciona.</div><div class="g20" style="margin-top:6px"><button class="tile sm" style="grid-column:span 10" onclick="hostCreateM()">Crear (manual)</button><button class="tile sm" style="grid-column:span 10" onclick="guestStartM()">Unirme (manual)</button></div></div>`;
- if(!ONL&&inClaude)body=`<div class="cp"><h3>Estás jugando desde la página de claude.ai</h3><div class="cm">Aquí el código corto no está disponible, porque esta página no puede usar servicios externos. Usa la conexión manual: funciona igual, con códigos largos${m4?' (uno por cada jugador)':''}. Si prefieres códigos cortos, abre el juego desde GitHub Pages o desde el archivo descargado.</div></div><div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">Serás el anfitrión${m4?': generas un código para cada jugador que se una (de 1 a 3).':'. Generas un código y tu amigo te devuelve otro.'}</div>${g('Crear (manual)','hostCreateM()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Pega el código que te envió el anfitrión y devuélvele el tuyo.</div>${g('Unirme (manual)','guestStartM()',0)}</div></div>`;
- else if(!ONL)body=`<div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">${m4?'Serás el anfitrión. Se genera un código de 6 caracteres para los demás jugadores (pueden ser de 1 a 3). Los puestos que queden libres los juega la computadora.':'Serás el anfitrión (Jugador 1). Se genera un código de 6 caracteres para tu amigo.'}</div>${g('Crear partida','hostCreate()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Escribe el código de 6 caracteres que te dio el anfitrión.</div>${g('Unirme con un código','guestStart()',0)}</div></div>`+manualPanel;
+ if(!ONL&&inClaude)body=`<div class="cp"><h3>Estás jugando desde la página de claude.ai</h3><div class="cm">Aquí el código corto no está disponible, porque esta página no puede usar servicios externos. Usa la conexión manual: funciona igual, con códigos largos${m4?' (uno por cada jugador)':''}. Si prefieres códigos cortos, abre el juego desde GitHub Pages o desde el archivo descargado.</div></div><div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">Serás el anfitrión${m4?': generas un código para cada jugador que se una (de 1 a 3).':'. Generas un código y tu amigo te devuelve otro.'}</div>${g('Crear (manual)','hostCreateM()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Pega el código que te envió el anfitrión y devuélvele el tuyo.</div>${g('Unirme (manual)','guestStartM()',0)}</div></div>`+testPanel;
+ else if(!ONL)body=`<div class="cw"><div class="cp"><h3>Crear partida${m4?' 2 vs 2':''}</h3><div class="cm">${m4?'Serás el anfitrión. Se genera un código de 6 caracteres para los demás jugadores (pueden ser de 1 a 3). Los puestos que queden libres los juega la computadora.':'Serás el anfitrión (Jugador 1). Se genera un código de 6 caracteres para tu amigo.'}</div>${g('Crear partida','hostCreate()',1)}</div><div class="cp"><h3>Unirme a una partida</h3><div class="cm">Escribe el código de 6 caracteres que te dio el anfitrión.</div>${g('Unirme con un código','guestStart()',0)}</div></div>`+manualPanel+testPanel;
  else if(m4&&ONL.role=='h'){
   const n=m4n(),ok=canStart();let top;
   if(ONL.mode=='s'){
@@ -1046,14 +1075,15 @@ function drawFrame(now){
 let run=false,rid=0,fr=0;const coarse=matchMedia('(pointer:coarse)').matches;
 function tick(now,my){if(!run||my!==rid)return;
  if(!GBG_SCR.includes(scr)){stop();return}
- fr++;if(!(coarse&&(fr&1)))drawFrame(now);
+ fr++;if(!(fr&1))drawFrame(now);
  requestAnimationFrame(n=>tick(n,my))}
 function start(){if(run){cv.style.display='block';return}run=true;reset(performance.now());cv.style.display='block';const my=++rid;requestAnimationFrame(n=>tick(n,my))}
 function stop(){run=false;rid++;cv.style.display='none'}
-return {cv,start,stop}
+function still(){run=false;rid++;const n=performance.now();reset(n-2600);drawFrame(n);cv.style.display='block'}
+return {cv,start,stop,still}
 }
-function gbgOn(){if(GB===null){try{GB=goalBgBuild();document.body.insertBefore(GB.cv,ui)}catch(e){GB=false}}if(GB)GB.start()}
-function gbgBg(a,b){ui.style.background=`linear-gradient(rgba(3,5,18,${a}),rgba(3,5,18,${b}))`;gbgOn()}
+function gbgOn(fija){if(GB===null){try{GB=goalBgBuild();document.body.insertBefore(GB.cv,ui)}catch(e){GB=false}}if(GB){if(fija)GB.still();else GB.start()}}
+function gbgBg(a,b,fija){ui.style.background=`linear-gradient(rgba(3,5,18,${a}),rgba(3,5,18,${b}))`;gbgOn(fija)}
 setTimeout(()=>{if(GB===null)try{GB=goalBgBuild();document.body.insertBefore(GB.cv,ui)}catch(e){GB=false}},3500);
 const MODES=[['1 jugador','Enfréntate a la computadora y elige qué tan difícil quieres el partido.'],['2 jugadores','Dos jugadores en el mismo teclado, en la misma pantalla.'],['Online 1 vs 1','Juega por internet contra un amigo usando un código.'],['Online 2 vs 2','Sala de hasta 4 jugadores. Los puestos libres los juega la computadora.']];
 const GEAR='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
@@ -1073,7 +1103,7 @@ function menuKey(e){
  if(e.code=='ArrowUp'||e.code=='ArrowDown'){mode=Math.max(1,Math.min(4,mode+(e.code=='ArrowDown'?1:-1)));menu();return}
  if(e.code=='Enter'&&!(e.target&&e.target.tagName=='BUTTON')){menuGo();return}
  if(e.code=='Escape'||e.code=='Backspace')intro()}
-new MutationObserver(()=>{document.body.classList.toggle('fcm',ui.classList.contains('fcm')&&ui.style.display!='none')}).observe(ui,{attributes:true,attributeFilter:['class','style']});
+new MutationObserver(()=>{document.body.classList.toggle('fcm',ui.classList.contains('fcm')&&ui.style.display!='none');if(GB&&(!GBG_SCR.includes(scr)||ui.style.display=='none'))GB.stop()}).observe(ui,{attributes:true,attributeFilter:['class','style']});
 function teams(){
  scr='teams';menuMusic(true);ui.className='tm';ui.style.background=`linear-gradient(rgba(6,14,10,.55),rgba(6,14,10,.8)),url(${BG2}) center/cover no-repeat`;
  const who=mode==4?(ONL.myPick!=null?'Elegiste '+T[ONL.myPick].n+'. Esperando a los demás ('+((ONL.pst||[]).filter(Boolean).length)+' de '+m4n()+')...':'Elige tu selección'):mode==3?(ONL.myPick!=null?'Elegiste '+T[ONL.myPick].n+'. Esperando al otro jugador...':'Elige tu selección'):step==0?'Jugador 1: elige tu selección':(mode==1?'Elige a tu rival (CPU)':'Jugador 2: elige tu selección');
