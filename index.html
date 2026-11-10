@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8"><title>Fútbol Sudamericano 2D</title>
+<html lang="es"><head><meta charset="utf-8"><meta name="build" content="20261107-1952">
+<title>Fútbol Sudamericano 2D</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -214,6 +215,8 @@ body.fcm #np{top:calc(env(safe-area-inset-top,0px) + 52px)}
 @media(pointer:coarse){#ui.fcm .fm-foot span{display:none}}
 @media(max-width:760px){#ui.fcm>.fm{grid-template-columns:minmax(150px,38vw) 1fr}#ui.fcm .fm-foot span{display:none}}
 @media(max-height:480px){#ui.fcm .fm-top{padding-top:calc(env(safe-area-inset-top,0px) + 12px)}#ui.fcm .fm-gear{width:36px;height:36px}#ui.fcm .fm-gear svg{width:20px;height:20px}#ui.fcm .fm-foot{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}}
+#upd{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);z-index:60;display:none;align-items:center;gap:12px;background:#14247a;color:#fff;border:1px solid #ffe600;border-radius:8px;padding:8px 14px;font:600 14px sans-serif;box-shadow:0 4px 18px #000a}#upd button{all:unset;cursor:pointer;background:#ffe600;color:#000;padding:5px 12px;border-radius:5px;font:700 13px sans-serif}
+#ui.fcm .fm-ver{position:absolute;right:calc(env(safe-area-inset-right,0px) + 3vw);bottom:calc(env(safe-area-inset-bottom,0px) + 2px);z-index:2;font:600 10px 'Helvetica Neue',Arial,sans-serif;color:#ffffff88}
 </style></head><body>
 <canvas id="c"></canvas><div id="ui"></div>
 <script>/* PeerJS 1.5.5 (MIT) */
@@ -560,7 +563,7 @@ function chan(ch){
  }else{if(ch.label=='c')ONL.cc=ch;else ONL.cg=ch}
  ch.onopen=()=>{if(!ONL||ONL.dead)return;
   if(P){P.n++;if(P.n==2){P.open=true;P.last=performance.now();ONL.open=true;ONL.last=performance.now();if(ONL.names[ch._h])lobbyBroadcast()}return}
-  ONL.n=(ONL.n||0)+1;if(ONL.n==2){ONL.open=true;ONL.last=performance.now();sendC({t:'hi',n:ONL.me})}};
+  ONL.n=(ONL.n||0)+1;if(ONL.n==2){ONL.open=true;ONL.last=performance.now();sendC({t:'hi',n:ONL.me,v:BUILD})}};
  ch.onmessage=e=>onMsg(ch.label,e.data,ch._h);
  ch.onclose=()=>{if(ONL&&!ONL.dead&&(P?P.open:ONL.open))netLost(ch._h)}}
 function wire(){
@@ -576,10 +579,10 @@ function onMsg(lb,d,from){
    ONL.snap=sn}return}
  let m;try{m=JSON.parse(d)}catch(e){return}
  switch(m.t){
-  case 'hi':if(ONL.m4){if(ONL.role=='h'&&from!=null){ONL.names[from]=String(m.n||'Jugador '+(from+1)).slice(0,14);assignTeam(from);lobbyBroadcast()}break}
+  case 'hi':verCheck(m.v,from);if(ONL.m4){if(ONL.role=='h'&&from!=null){ONL.names[from]=String(m.n||'Jugador '+(from+1)).slice(0,14);assignTeam(from);lobbyBroadcast()}break}
    if(ONL.hi)break;ONL.hi=1;ONL.peer=m.n;USR=ONL.role=='h'?[ONL.me,m.n]:[m.n,ONL.me];mode=3;step=0;ONL.myPick=null;ONL.peerPick=null;if(scr=='online')teams();break;
   case 'full':if(ONL.role=='g'&&!ONL.lobby){clearTimeout(ONL.tmo);clearTimeout(ONL.gfb);ONL.joining=false;ONL.msg=m.w=='started'?'La partida ya empezó. No puedes entrar.':'La sala está llena (ya hay 4 jugadores).';try{ONL.pj&&ONL.pj.destroy()}catch(e){}onlineScreen()}break;
-  case 'lob':if(ONL.m4&&ONL.role=='g'){ONL.names=m.n;ONL.tm=m.tm;ONL.myh=m.me;ONL.lobby=true;ONL.joining=false;ONL.msg='';if(scr=='online')onlineScreen()}break;
+  case 'lob':if(ONL.m4&&ONL.role=='g'){if(!ONL.vseen){ONL.vseen=1;verCheck(m.v)}ONL.names=m.n;ONL.tm=m.tm;ONL.myh=m.me;ONL.lobby=true;ONL.joining=false;ONL.msg='';if(scr=='online')onlineScreen()}break;
   case 'go':if(ONL.m4&&ONL.role=='g'){ONL.names=m.n;ONL.tm=m.tm;ONL.started=true;m4Teams()}break;
   case 'left':if(ONL.m4)toast(m.w+' se desconectó. Su jugador pasa a ser automático.');break;
   case 'pst':if(ONL.m4){ONL.pst=m.c;if(scr=='teams')teams()}break;
@@ -861,7 +864,7 @@ function onlineScreen(){
  else if(!ONL.code&&!ONL.pc)body=`<div class="cp"><h3>Invitado</h3><div class="cm">1. Pega aquí el código que te envió el anfitrión.</div><textarea id="oa" class="inp" rows="3" placeholder="Código del anfitrión"></textarea>${g('Generar respuesta','guestMake()',1,10)}</div>`;
  else if(!ONL.code)body=`<div class="cp"><h3>Invitado</h3><div class="cm">Generando respuesta...</div></div>`;
  else body=`<div class="cp"><h3>Invitado</h3><div class="cm">2. Copia este código y envíaselo al anfitrión.</div><textarea id="oc" class="inp" rows="3" readonly onclick="this.select()">${ONL.code}</textarea>${g('Copiar código','copyCode()',0,8)}<div class="cm" id="cs"></div></div>`;
- ui.innerHTML=`<div class="tg"><div class="bc"><span>Menú principal &gt; <b>Online${m4?' 2 vs 2':''}</b></span><button class="bk" onclick="backOnline()">Atrás</button></div><div class="ttl">${m4?'Online 2 contra 2':'Partida online'}</div>${body}<div class="cm">${esc((ONL&&ONL.msg)||'')}</div></div>`;
+ ui.innerHTML=`<div class="tg"><div class="bc"><span>Menú principal &gt; <b>Online${m4?' 2 vs 2':''}</b></span><button class="bk" onclick="backOnline()">Atrás</button></div><div class="ttl">${m4?'Online 2 contra 2':'Partida online'}</div>${body}<div class="cm">${esc((ONL&&ONL.msg)||'')}</div><div class="cm" style="text-align:right;opacity:.6;font-size:11px">versión ${BUILD}</div></div>`;checkUpdate();
  const jc=document.getElementById('jc');if(jc&&jc.focus&&!ONL.joining&&!jc.value)jc.focus()}
 
 
@@ -1097,7 +1100,7 @@ function menu(){
    ${mode==1?`<div class="fm-lb">Dificultad</div><div class="fm-ch">${DIF.map((d,i)=>`<button class="${dif==i?'on':''}" onclick="dif=${i};menu()">${d}</button>`).join('')}</div>`:''}
    <div class="fm-lb">Duración del partido</div><div class="fm-ch">${[1,3,5,7,10].map(m=>`<button class="${mins==m?'on':''}" onclick="mins=${m};menu()">${m} min</button>`).join('')}</div>
    <button class="fm-cta" onclick="menuGo()"><i>↵</i>Continuar</button></div>
-  <div class="fm-foot"><button onclick="intro()"><i>◀</i>Atrás</button><span>↑ ↓ Modo&nbsp;&nbsp;·&nbsp;&nbsp;Enter Continuar&nbsp;&nbsp;·&nbsp;&nbsp;Esc Atrás</span></div></div>`;
+  <div class="fm-foot"><button onclick="intro()"><i>◀</i>Atrás</button><span>↑ ↓ Modo&nbsp;&nbsp;·&nbsp;&nbsp;Enter Continuar&nbsp;&nbsp;·&nbsp;&nbsp;Esc Atrás</span></div><div class="fm-ver">versión ${BUILD}</div></div>`;checkUpdate();
  const fb=document.getElementById('fs');if(fb)document.documentElement.style.setProperty('--fsw',(fb.offsetWidth||200)+'px')}
 function menuKey(e){
  if(e.code=='ArrowUp'||e.code=='ArrowDown'){mode=Math.max(1,Math.min(4,mode+(e.code=='ArrowDown'?1:-1)));menu();return}
@@ -1141,7 +1144,7 @@ function m4Info(){const n=ONL.names||[],tm=ONL.tm,h=myH(),t=tm[h],mates=[0,1,2,3
 function assignTeam(h){const c=[0,0];ONL.names.forEach((n,i)=>{if(n&&i!=h)c[ONL.tm[i]]++});ONL.tm[h]=c[0]<=c[1]?0:1}
 function canStart(){const c=[0,0];ONL.names.forEach((n,i)=>{if(n)c[ONL.tm[i]]++});return c[0]>=1&&c[1]>=1}
 function lobbyMove(h){if(!ONL||ONL.role!='h'||ONL.started||!ONL.names[h])return;const t=1-ONL.tm[h];if(ONL.names.filter((n,i)=>n&&i!=h&&ONL.tm[i]==t).length>=2)return;ONL.tm[h]=t;lobbyBroadcast()}
-function lobbyBroadcast(){if(!ONL||!ONL.m4)return;ONL.pr.forEach((P,i)=>{if(P&&ONL.names[i])sendC({t:'lob',n:ONL.names,tm:ONL.tm,me:i},i)});if(scr=='online')onlineScreen()}
+function lobbyBroadcast(){if(!ONL||!ONL.m4)return;ONL.pr.forEach((P,i)=>{if(P&&ONL.names[i])sendC({t:'lob',n:ONL.names,tm:ONL.tm,me:i,v:BUILD},i)});if(scr=='online')onlineScreen()}
 function lobbyGo(){if(!ONL||ONL.role!='h'||!ONL.m4||!canStart()||ONL.started)return;ONL.started=true;ONL.picks=ONL.names.map(n=>n?null:-1);ONL.rolling=false;sendC({t:'go',n:ONL.names,tm:ONL.tm});m4Teams()}
 function m4Teams(){mode=4;step=0;ONL.myPick=null;ONL.pst=[false,false,false,false];ONL.picks=ONL.picks||ONL.names.map(n=>n?null:-1);teams()}
 function pickStatus(){ONL.pst=ONL.picks.map(x=>x!=null&&x>=0);sendC({t:'pst',c:ONL.pst});if(scr=='teams')teams()}
@@ -1611,7 +1614,24 @@ const chgReady=t=>S.net=='g'?!!(S.csr&&S.csr[t]):!!(S.hm&&S.hm[t]&&S.cs[t]<=0);
 const chgProg=t=>S.net=='g'?((S.csp&&S.csp[t])||0):(S.hm&&S.hm[t]&&S.kp[t]&&S.cs[t]<=0?Math.min(1,S.chg[t]/D.ct):0);
 const myH=()=>mode==4?(ONL&&ONL.role=='g'?(ONL.myh||0):0):-1;
 function slotLabel(h,p){if(mode==4)return h==myH()?'TÚ':String((ONL&&ONL.names&&ONL.names[h])||'J'+(h+1)).slice(0,9);return p.t==0?'P1':(mode!=1?'P2':'CPU')}
-function toast(m){let e=document.getElementById('toast');if(!e){e=document.createElement('div');e.id='toast';document.body.appendChild(e)}e.textContent=m;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none'},4500)}
+const BUILD=document.querySelector('meta[name=build]').content;
+function toast(m,ms){let e=document.getElementById('toast');if(!e){e=document.createElement('div');e.id='toast';document.body.appendChild(e)}e.textContent=m;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none'},ms||4500)}
+// ----- version: avisa si el otro jugador tiene una copia distinta del juego, y si hay una version nueva publicada -----
+function verCheck(v,from){if(v===BUILD)return;
+ const who=(ONL&&ONL.m4&&ONL.role=='h'&&from!=null)?(ONL.names[from]||'Un jugador'):'El otro jugador';
+ const txt=!v?who+' tiene una versión anterior del juego (sin las novedades). Pídele que recargue la página.':(v<BUILD?who+' tiene una versión más antigua del juego ('+v+'). Pídele que recargue la página.':'Tu versión del juego ('+BUILD+') es más antigua que '+((ONL&&ONL.m4&&ONL.role=='h'&&from!=null)?'la de '+who:'la del otro jugador')+' ('+v+'). Recarga la página para actualizar.');
+ if(ONL)ONL.vmis=txt;toast(txt,10000)}
+let updAsked=0;
+async function checkUpdate(force){
+ if(location.protocol=='file:')return;const n=Date.now();if(!force&&n-updAsked<60000)return;updAsked=n;
+ try{const r=await fetch(location.href.split('#')[0].split('?')[0]+'?chk='+n,{cache:'no-store',headers:{Range:'bytes=0-6143'}});if(!r.body)return;
+  const rd=r.body.getReader(),x=await rd.read();try{rd.cancel()}catch(e){}
+  const t=new TextDecoder().decode(x.value||new Uint8Array()),m=/name="build" content="([^"]+)"/.exec(t);
+  if(m&&m[1]&&m[1]>BUILD)showUpd(m[1])}catch(e){}}
+function showUpd(v){let e=document.getElementById('upd');if(!e){e=document.createElement('div');e.id='upd';document.body.appendChild(e)}
+ e.innerHTML='Hay una versión nueva del juego. <button onclick="reloadNew()">Actualizar</button>';e.style.display=(scr=='game'||scr=='pause')?'none':'flex'}
+function reloadNew(){location.href=location.href.split('#')[0].split('?')[0]+'?v='+Date.now()}
+setTimeout(checkUpdate,4000);setInterval(()=>checkUpdate(),300000);
 // ----- PIN (ping): menos es mejor, tope 999 -----
 function myPin(){if(!ONL||ONL.dead)return null;const now=performance.now();
  if(ONL.m4&&ONL.role=='h'){let mx=null;ONL.pr.forEach(P=>{if(P&&P.open){const v=(P.rttT&&now-P.rttT<4500)?P.rtt:999;mx=mx==null?v:Math.max(mx,v)}});return mx}
